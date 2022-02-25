@@ -1,0 +1,180 @@
+---
+title: "Tutorial 7"
+subtitle: "Web Scraping Prime Ministers of Canada from Wikipedia"
+author: "Samita Prabhasavat"
+thanks: "Code and data are available at: https://github.com/PSamita/TorontoPolice.git"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  bookdown::pdf_document2
+toc: FALSE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse) 
+library(rvest) 
+library(xml2)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Simulate Data ####
+library(babynames)
+
+simulated_dataset <-
+  tibble(
+    prime_minister = sample(
+      x = babynames |> filter(prop > 0.01) |>
+        select(name) |> unique() |> unlist(),
+      size = 10,
+      replace = FALSE
+    ),
+    birth_year = sample(
+      x = c(1700:1990),
+      size = 10,
+      replace = TRUE
+    ),
+    years_lived = sample(
+      x = c(50:100),
+      size = 10,
+      replace = TRUE
+    ),
+    death_year = birth_year + years_lived
+  ) |>
+  select(prime_minister, birth_year, death_year, years_lived) |>
+  arrange(birth_year)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Get Data ####
+raw_data <- 
+  read_html("https://en.wikipedia.org/wiki/List_of_prime_ministers_of_Canada")
+write_html(raw_data, "pms.html")
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Read Data ####
+raw_data <- 
+  read_html("pms.html")
+```
+
+```{r, echo = FALSE, include = FALSE, warning = FALSE, message = FALSE}
+#### Clean Data ####
+# Parse tags in order #
+parse_data_selector_gadget <- 
+  raw_data |>
+  html_nodes("td:nth-child(3)") |>
+  html_text()
+
+#head(parse_data_selector_gadget)
+parse_data_selector_gadget
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Clean Data ####
+# Filter blank lines #
+parsed_data <-
+  tibble(raw_text = parse_data_selector_gadget)
+
+parsed_data <- parsed_data[-10, ]
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Clean Data ####
+# Separate columns #
+initial_clean <- parsed_data |>
+  mutate(raw_text = str_remove_all(raw_text, "\n")) |>
+  separate(raw_text,
+           into = c("Name", "not_name"),
+           sep = "\\(",
+           remove = FALSE) |>
+  separate(not_name,
+           into = c("Date", "all_the_rest"),
+           sep = "\\)",
+           remove = FALSE)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Clean Data ####
+# Clean up the columns #
+initial_clean <- initial_clean |>
+  separate(col = Name,
+           into = c("Name", "Title"),
+           sep = "[[:digit:]]",
+           extra = "merge",
+           fill = "right") |>
+  separate(col = Name,
+           into = c("Name", "Title"),
+           sep = "MP for",
+           extra = "merge",
+           fill = "right") |>
+  mutate(Name = str_remove(Name, "\\[b\\]"))
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Clean Data ####
+# Clean up the columns #
+cleaned_data <- initial_clean |>
+  select(Name, Date) |>
+  separate(Date, into = c("Birth", "Died"),
+           sep = "–",
+           remove = FALSE) |>
+  mutate(Birth = str_remove_all(Birth, "born"),
+         Birth = str_trim(Birth)) |>
+  select(-Date) |>
+  mutate(Name = str_remove(Name, "\n")) |>
+  mutate_at(vars(Birth, Died), ~as.integer(.)) |>
+  mutate(Age_at_Death = Died - Birth) |>
+  distinct()
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#### Clean Data ####
+# Correct data #
+cleaned_data$Birth[which(cleaned_data$Name == "Joe Clark")] <- "1939"
+cleaned_data$Birth[which(cleaned_data$Name == "Brian Mulroney")] <- "1939"
+cleaned_data$Birth[which(cleaned_data$Name == "Kim Campbell")] <- "1947"
+cleaned_data$Birth[which(cleaned_data$Name == "Jean Chrétien")] <- "1934"
+cleaned_data$Birth[which(cleaned_data$Name == "Paul Martin")] <- "1938"
+cleaned_data$Birth[which(cleaned_data$Name == "Stephen Harper")] <- "1959"
+cleaned_data$Birth[which(cleaned_data$Name == "Justin Trudeau")] <- "1971"
+```
+
+# About the Data
+## Data Source
+In this paper, I am interested in looking into how long the prime ministers of Canada lived, based on the year they were born. The data I use in this paper is from the list of prime ministers of Canada on Wikipedia. The page contains information, including name, year of birth, and year of death of every prime minister of Canada. 
+
+## Data Gathering Process
+The first step is to find the source of the data. As I want to know how long the prime minister of Canada lived, I need to find the website or the source that contains all information I want and those information should also be reliable and correct. Wikipedia is a popular encyclopedia often used as a tertiary source in papers. The Wikipedia page about the prime ministers of Canada is suitable to use in this paper as it provides all information I am interested in table format.
+
+The second step is to download the page using rvest package as html file. SelctorGadget is also used to choose the information I want from the whole page. In this case, I choose the Name column which contains both name and birth-death year of each prime minister.
+
+The third step is to clean the data to. There are many ways to clean the data mostly depending on the data itself and how we want the data to look like. In this paper, I start from filtering out the blank lines in the data frame so that I don't have to deal with unnecessary attributes. As the names and the years are now in the same column, I have to separate them in order to get three columns which are name, birth year, and death year. After getting all columns I need ready, I add another column to store the age of the prime ministers when they died. The values in this column are calculated by subtracting birth year from death year. The last thing I do is to check if all data are correct and in the right place. There are some values missing form the data frame, so I replace them manually.
+
+\newpage
+# About the Table
+## Findings
+According to Table \@ref(tab:ptable), Canada had 22 former prime ministers, and the current prime minister, Justin Trudeau, is the 23rd prime minister of Canada. Among 22 former prime ministers, 6 of them; Joe Clark, Brian Mulroney, Kim Campbell, Jean Chrétien, Paul Martin, and Stephen Harper, are still alive. Sir John Thompson died at the youngest age of 49 while Sir Mackenzie Bowell and Sir Charles Tupper died at the oldest age of 94. Seven former prime ministers died in their 70s, four former prime ministers died in their 80s, and four other former prime ministers died in their 90s.
+
+```{r ptable, echo = FALSE, warning = FALSE, message = FALSE}
+#### Create Table ####
+cleaned_data |>
+  knitr::kable(caption = "Canada Prime Minister, by how old they were when they died",
+               col.names = c("Prime Minister", "Birth Year", "Death Year", "Age at Death"),
+               booktabs = TRUE,
+               linesep = "")
+```
+
+# Reflection
+## What took you longer than expected?
+The data cleaning process took longer time than I thought. Even though the data on Wikipedia page looks somewhat similar to the case study we went through in the class, small differences make the data cleaning process different. It took me some times to decide on what to do with the data as there are many different ways that can lead to the same result. Some methods I tried didn't give the result I wanted so I had to change to another method. Moreover, the data from web scraping is much messier than the data from Toronto open data portal I previously worked with. The data from Toronto open data portal doesn't require much cleaning, I only changed the names of the columns and deal with some null values. On the other hand, the data from web scraping has to be cleaned starting from the format of the data itself which requires longer time to do.
+
+## When did it become fun?
+The first part I found very fun is the web scraping part where I gather data from the Wikipedia page. I think it is interesting to explore how much I can do on the website. I spent some times using SelctorGadget to explore ways I can do to select the data I'm interested in and to see the limitations of how far I can explore the page.
+
+Another part I enjoyed doing is the data cleaning process. As I mentioned earlier, there are many different ways to clean the data the can lead to the same result. I find it fun to explore each way and to try adjusting the code to make it less messy. I think finding the ways to clean the data is similar to trying to solve a math problem. There are many ways to approach one problem, and each approach or method has its own advantages and disadvantages. I don't think there are strict data cleaning rules or steps that can be used with every data in this world because every data is different. In order to choose an appropriate way to clean the data, you not only need to understand the nature of it but also need to understand what you want. The fun part for me is where I can explore those methods and choose the one I think fits the data the most.
+
+## What would you do differently next time you do this?
+The next time I work with this data, I would like to explore more data cleaning methods to substitute with the part I manually replaced data. Even though the code works well, I think there should be a better way to write this code. I'm lucky that this data only has 23 rows so it was easy to replace values manually. However, if I have to work with a bigger data, replacing values manually might be a bad and unproductive way to deal with the data.
+
+For my future web scraping projects, I would like to explore other website format that are different from the case studies we went through in class and try to clean those data. It might take longer time than writing this paper but I think it should be a good practice on dealing with data. 
